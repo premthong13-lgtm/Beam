@@ -1,0 +1,226 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+
+-- โหลด Orion Library
+local OrionLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/shlexware/Orion/main/source"))()
+
+-- สร้างหน้าต่างเมนู
+local Window = OrionLib:MakeWindow({
+    Name = "Delta Custom Hub | 4 ฟังก์ชันหลัก",
+    HidePremium = false,
+    SaveConfig = false,
+    IntroEnabled = true,
+    IntroText = "กำลังโหลดสคริปต์..."
+})
+
+-- ตัวแปรสถานะ
+local State = {
+    WalkSpeed = 16,
+    NoClip = false,
+    ESP = false,
+    InfiniteJump = false
+}
+
+local ESPFolder = Instance.new("Folder")
+ESPFolder.Name = "DeltaESPFolder"
+ESPFolder.Parent = game:GetService("CoreGui")
+
+-- ฟังก์ชันดึง Humanoid
+local function getHumanoid()
+    local char = LocalPlayer.Character
+    return char and char:FindFirstChildOfClass("Humanoid")
+end
+
+-- ฟังก์ชันสร้าง/อัปเดต ESP รายบุคคล
+local function applyESP(player)
+    if player == LocalPlayer then return end
+
+    local function setupCharacter(character)
+        -- ลบของเก่าก่อนหากมี
+        local existingHighlight = ESPFolder:FindFirstChild("HL_" .. player.Name)
+        if existingHighlight then existingHighlight:Destroy() end
+
+        local existingTag = ESPFolder:FindFirstChild("TAG_" .. player.Name)
+        if existingTag then existingTag:Destroy() end
+
+        if not State.ESP then return end
+
+        local rootPart = character:WaitForChild("HumanoidRootPart", 10)
+        if not rootPart then return end
+
+        -- ไฮไลต์กรอบตัวละครให้มองเห็นทะลุกำแพง
+        local highlight = Instance.new("Highlight")
+        highlight.Name = "HL_" .. player.Name
+        highlight.Adornee = character
+        highlight.FillColor = Color3.fromRGB(255, 65, 65)
+        highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+        highlight.FillTransparency = 0.5
+        highlight.OutlineTransparency = 0
+        highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        highlight.Parent = ESPFolder
+
+        -- ป้ายชื่อแสดงเหนือหัวผู้เล่น
+        local billboard = Instance.new("BillboardGui")
+        billboard.Name = "TAG_" .. player.Name
+        billboard.Adornee = rootPart
+        billboard.Size = UDim2.new(0, 160, 0, 35)
+        billboard.StudsOffset = Vector3.new(0, 3.2, 0)
+        billboard.AlwaysOnTop = true
+        billboard.Parent = ESPFolder
+
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Size = UDim2.new(1, 0, 1, 0)
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.Text = player.DisplayName .. " (@" .. player.Name .. ")"
+        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
+        nameLabel.TextStrokeTransparency = 0
+        nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+        nameLabel.TextScaled = true
+        nameLabel.Font = Enum.Font.GothamBold
+        nameLabel.Parent = billboard
+    end
+
+    if player.Character then
+        task.spawn(setupCharacter, player.Character)
+    end
+
+    player.CharacterAdded:Connect(function(char)
+        if State.ESP then
+            setupCharacter(char)
+        end
+    end)
+end
+
+-- ฟังก์ชันล้าง ESP ทั้งหมด
+local function clearESP()
+    for _, item in ipairs(ESPFolder:GetChildren()) do
+        item:Destroy()
+    end
+end
+
+-- ฟังก์ชันเปิด/ปิด ESP ทั้งแมพ
+local function setESP(enabled)
+    State.ESP = enabled
+    clearESP()
+    if enabled then
+        for _, player in ipairs(Players:GetPlayers()) do
+            applyESP(player)
+        end
+    end
+end
+
+-- สร้างแท็บหลัก
+local MainTab = Window:MakeTab({
+    Name = "ฟังก์ชันหลัก",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+local Section = MainTab:AddSection({
+    Name = "ควบคุมตัวละครและการมองเห็น"
+})
+
+-- 1) ปรับสปีดได้ 1-1000
+Section:AddSlider({
+    Name = "1) ปรับความเร็ว (Speed 1 - 1000)",
+    Min = 1,
+    Max = 1000,
+    Default = 16,
+    Color = Color3.fromRGB(0, 170, 255),
+    Increment = 1,
+    ValueName = "Speed",
+    Callback = function(Value)
+        State.WalkSpeed = Value
+        local hum = getHumanoid()
+        if hum then
+            hum.WalkSpeed = Value
+        end
+    end
+})
+
+-- 2) ทะลุกำแพงและสิ่งกีดขวางทั้งหมด
+Section:AddToggle({
+    Name = "2) ทะลุกำแพงและสิ่งกีดขวาง (NoClip)",
+    Default = false,
+    Callback = function(Value)
+        State.NoClip = Value
+        -- คืนค่า CanCollide เมื่อปิดโหมดทะลุ
+        if not Value and LocalPlayer.Character then
+            for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = true
+                end
+            end
+        end
+    end
+})
+
+-- 3) มองเห็นทุกคนในแมพพร้อมชื่อ
+Section:AddToggle({
+    Name = "3) มองเห็นทุกคนในแมพพร้อมชื่อ (ESP)",
+    Default = false,
+    Callback = function(Value)
+        setESP(Value)
+    end
+})
+
+-- 4) กระโดดไม่จำกัด
+Section:AddToggle({
+    Name = "4) กระโดดไม่จำกัด (Infinite Jump)",
+    Default = false,
+    Callback = function(Value)
+        State.InfiniteJump = Value
+    end
+})
+
+-- ลูปทำงานของ NoClip และคงค่าความเร็ว
+RunService.Stepped:Connect(function()
+    if State.NoClip and LocalPlayer.Character then
+        for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
+        end
+    end
+
+    local hum = getHumanoid()
+    if hum and hum.WalkSpeed ~= State.WalkSpeed then
+        hum.WalkSpeed = State.WalkSpeed
+    end
+end)
+
+-- ลูปทำงานของ Infinite Jump
+UserInputService.JumpRequest:Connect(function()
+    if State.InfiniteJump then
+        local hum = getHumanoid()
+        if hum then
+            hum:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
+    end
+end)
+
+-- จัดการผู้เล่นเข้า/ออกสำหรับ ESP
+Players.PlayerAdded:Connect(function(player)
+    if State.ESP then
+        applyESP(player)
+    end
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    local hl = ESPFolder:FindFirstChild("HL_" .. player.Name)
+    if hl then hl:Destroy() end
+    local tag = ESPFolder:FindFirstChild("TAG_" .. player.Name)
+    if tag then tag:Destroy() end
+end)
+
+-- คืนค่า Speed เมื่อเกิดใหม่
+LocalPlayer.CharacterAdded:Connect(function(char)
+    local hum = char:WaitForChild("Humanoid", 5)
+    if hum then
+        hum.WalkSpeed = State.WalkSpeed
+    end
+end)
+
+OrionLib:Init()
